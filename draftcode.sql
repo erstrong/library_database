@@ -1,9 +1,9 @@
 -------------------
 -- CREATE DATABASE
 -------------------
-create database ACADEMIC_LIBRARY;
+create database EMILYSHAWN_ACADEMIC_LIBRARY;
 go 
-use ACADEMIC_LIBRARY;
+use EMILYSHAWN_ACADEMIC_LIBRARY;
 
 -------------------
 -- CREATE TABLES
@@ -34,20 +34,20 @@ create table Collection
 create table BorrowingPolicies
 (
   PolicyID varchar(10) not null primary key,
-  PolicyRule dec(3,3) not null
+  PolicyRule decimal(6,3) not null
 );
 
 create table Copy
 (
   Barcode varchar(12) not null primary key,
-  CallNo varchar(20) not null,-- foreign key references Edition(CallNo),
+  CallNo varchar(50) not null,-- foreign key references Edition(CallNo),
   Status varchar(20) not null,
   CreationDate date,
   PolicyID varchar(10) not null foreign key references BorrowingPolicies(PolicyID),
-  CollectionID varchar(3) not null foreign key references Collection(CollectionID),
+  CollectionID varchar(12) not null foreign key references Collection(CollectionID),
   CheckoutCount int, -- TODO update this count during a checkout
   DateLastCheckedOut date, -- TODO update this date during a checkout
-  constraint CHK_CopyStatus CHECK (Status in 
+  constraint CHK_CopyStatus CHECK (Status in
     ('AVAILABLE','ON HOLD','CHECKED OUT','OVERDUE','ON RESERVE','MISSING','IN REPAIR','ON ORDER'))
 );  
 
@@ -58,8 +58,8 @@ create table Courses
   CourseDept varchar(4),
   CourseInstructor varchar(50),
   CourseTerm varchar(6),
-  CollectionID foreign key references Collection(CollectionID),
-  PolicyID foreign key references BorrowingPolicies(PolicyID)
+  CollectionID varchar(12) foreign key references Collection(CollectionID),
+  PolicyID varchar(10) foreign key references BorrowingPolicies(PolicyID)
 );
 
 create table CourseReserveList
@@ -71,7 +71,7 @@ create table CourseReserveList
 
 create table CheckoutTransaction
 (
-  PatronID varchar(9) not null foreign key reference Patron(PatronID),
+  PatronID varchar(9) not null foreign key references Patron(PatronID),
   Barcode varchar(12) not null foreign key references Copy(Barcode),
   CheckoutTimestamp datetime not null,
   DueDate datetime not null,
@@ -81,18 +81,18 @@ create table CheckoutTransaction
 
 create table Holds
 (
-  PatronID varchar(9) not null foreign key reference Patron(PatronID),
+  PatronID varchar(9) not null foreign key references Patron(PatronID),
   Barcode varchar(12) not null foreign key references Copy(Barcode),
   HoldPlacedDate datetime not null,
   HoldUntilDate datetime not null,
   Status varchar(20) not null,
   constraint CHK_Holds CHECK (Status in ('ON HOLD', 'READY FOR PICKUP', 'ON ORDER')),
-  constraint PK_CheckoutTransaction primary key (PatronID,Barcode)
+  constraint PK_Holds primary key (PatronID,Barcode)
 );
 
 create table Fines
 (
-  PatronID varchar(9) not null foreign key reference Patron(PatronID),
+  PatronID varchar(9) not null foreign key references Patron(PatronID),
   Barcode varchar(12) not null foreign key references Copy(Barcode),
   DueDate datetime not null,
   DateReturned datetime,
@@ -106,7 +106,7 @@ create table Address
   Street varchar(50),
   City varchar(20),
   State varchar(20),
-  Country varchar(20)
+  Country varchar(20),
   PostalCode varchar(6)
 );
 
@@ -119,6 +119,8 @@ create table PatronAddresses
   constraint PK_PatronAddresses primary key (AddressType,PatronID)
 );
 
+
+
 -------------------
 -- CREATE FUNCTIONS
 -------------------
@@ -129,10 +131,10 @@ create table PatronAddresses
 -------------------
 -- ADD SAMPLE DATA
 -------------------
-insert into PatronType values 
+insert into PatronType values
   ('FAC',10),('EMP',2),('STU',1),('ALM',1),('BLC',1),('XRG',1);
 
-insert into Patron values 
+insert into Patron values
   ('901234551','Susan','Raspberry','FAC','sraspberry@university.edu','555-555-5555'),
   ('901234562','Tyler','Tomato','EMP','ttomato@university.edu','555-555-5555'),
   ('901234565','Bonnie','Potato','ALM','bpotato@university.edu','555-555-5555'),
@@ -194,7 +196,7 @@ insert into Courses values
 insert into CourseReserveList values
   ('ACCT1201-01-SP17','396144853426'),
   ('ARAB1101-01-SP17','223880032392'),
-  ('ARAB1101-01-SP17','223880032392'),
+  ('ARAB1101-02-SP17','223880032392'),
   ('NRSG4604-01-SP17','471424403122'),
   ('NRSG4604-02-SP17','471424403122'),
   ('NRSG6241-01-SP17','471424403122'),
@@ -232,6 +234,7 @@ insert into PatronAddresses values
   ('CAMPUS','921234561','000000007'),
   ('HOME','921234567','000000011'),
   ('CAMPUS','921234567','000000003');
+
 
 -------------------
 -- CREATE VIEWS
