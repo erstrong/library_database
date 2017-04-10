@@ -96,7 +96,7 @@ create table Fines
   Barcode varchar(12) not null foreign key references Copy(Barcode),
   DueDate datetime not null,
   DateReturned datetime,
-  AmountDue varchar(6) not null,
+  AmountDue varchar(6),
   constraint PK_Fines primary key (PatronID,Barcode,DueDate)
 );
 
@@ -118,15 +118,6 @@ create table PatronAddresses
   constraint CHK_AdressType CHECK (AddressType in ('CAMPUS', 'HOME')),
   constraint PK_PatronAddresses primary key (AddressType,PatronID)
 );
-
-
-
--------------------
--- CREATE FUNCTIONS
--------------------
--- CheckOutItem
--- RenewItem
--- CalculateFines
 
 -------------------
 -- ADD SAMPLE DATA
@@ -205,9 +196,37 @@ insert into CourseReserveList values
   ('INFO6210-01-SP17','798287244823'),
   ('ENVR1110-01-SP17','223880032392');
 
--- checkout transactions
--- holds
--- fines
+-- additional CheckoutTransactions through stored procedure
+insert into CheckoutTransaction values
+('921234561','192868655016','2017-04-05 13:30:00.000','2017-07-04 09:15:00.000',null),
+('921234561','798287244823','2015-09-10 10:22:00.000','2015-12-09 09:15:00.000',null),
+('901234562','223880032392','2017-04-02 20:17:00.000','2017-04-02 23:16:00.000',null),
+('912345677','850891785675','2014-11-09 11:22:00.000','02-01-2015 09:15:00.000','2'),
+('912345677','529427240156','2013-04-07 15:30:00.000','2013-05-05 09:15:00.000',null);
+
+insert into Holds values
+('912345677','192868655016','2017-04-07 10:11:00.000','2017-05-07 09:15:00.000','ON HOLD'),
+('901234567','192868655016','2017-04-08 12:11:00.000','2017-05-08 09:15:00.000','ON HOLD'),
+('912345677','223880032392','2017-04-09 13:33:00.000','2017-05-09 09:15:00.000','ON HOLD'),
+('901234567','223880032392','2017-04-03 08:17:00.000','2017-05-03 09:15:00.000','ON HOLD'),
+('921234561','223880032392','2017-04-07 15:22:00.000','2017-05-07 09:15:00.000','ON HOLD'),
+('901234565','223880032392','2017-04-05 09:16:00.000','2017-05-05 09:15:00.000','ON HOLD'),
+('921234567','223880032392','2017-04-08 08:22:00.000','2017-05-08 09:15:00.000','ON HOLD'),
+('901234567','529427240156','2017-04-07 21:30:00.000','2017-05-07 09:15:00.000','ON HOLD'),
+('921234561','529427240156','2017-04-08 16:23:00.000','2017-05-08 09:15:00.000','ON HOLD'),
+('901234565','529427240156','2017-04-08 22:13:00.000','2017-05-08 09:15:00.000','ON HOLD');
+
+insert into Fines values
+('901234551','728187260948','2001-10-01 10:20:00.000','2006-10-01 09:15:00.000','100'),
+('901234551','454898933545','2003-09-12 12:00:00.000','2006-10-01 09:15:00.000','100'),
+('901234551','728187260948','2008-04-01 09:15:00.000','2008-04-02 09:14:00.000','1'),
+('901234551','223880032392','2008-04-01 09:15:00.000','2008-04-02 09:14:00.000','1'),
+('901234551','798287244823','2014-12-20 09:15:00.000','2015-01-07 9:14:00.000','18'),
+('901234551','837556894200','2012-03-09 09:15:00.000','2013-01-01 08:30:00.000','100'),
+('901237569','454898933545','2007-01-02 09:15:00.000','2007-01-12 08:20:00.000','10'),
+('921234567','728187260948','2010-07-31 09:15:00.000','2010-08-01 08:30:00.000','1'),
+('921234567','192868655016','2015-09-21 09:15:00.000','2015-09-30 09:15:00.000','100'),
+('921234567','192868655016','2015-10-01 09:15:00.000','2015-10-01 12:14:00.000','3');
 
 insert into Address values
   ('000000001','360 Huntington Ave','Boston','MA','USA','02115'),
@@ -236,21 +255,233 @@ insert into PatronAddresses values
   ('CAMPUS','921234567','000000003');
 
 
+
+-------------------
+-- CREATE FUNCTIONS
+-------------------
+-- CheckOutItem
+-- procedure called during check out
+create procedure CheckOutItem
+    @PatronID varchar(9),
+    @Barcode varchar(12)
+as
+begin
+    declare @CheckoutTimestamp datetime;
+    set @CheckoutTimestamp = sysdatetime();
+    declare @Rule1 int;
+    set @Rule1 = (select t.BorrowingRule
+   	 from dbo.PatronType t,dbo.Patron p
+   	 where t.PatronTypeID = p.PatronTypeID
+   	 and p.PatronID = @PatronID);
+    declare @Rule2 int;
+    set @Rule2 = (select b.PolicyRule
+   	 from dbo.BorrowingPolicies b,dbo.Copy c
+   	 where b.PolicyID=c.PolicyID
+   	 and c.Barcode = @Barcode);
+    declare @DueDate datetime;
+    set @DueDate =
+     case @Rule2
+   	 when 0.125
+   		 then DateAdd(hour,3,@CheckoutTimestamp)
+   	 when 21
+   		 then DateAdd(day,21,@CheckoutTimestamp)
+   	 when 5
+   		 then DateAdd(day,5,@CheckoutTimestamp)
+   	 else
+   		 DateAdd(day,1,@CheckoutTimestamp)
+   	 end;
+    insert into CheckoutTransaction values
+   	 (@PatronID,@Barcode,@CheckoutTimestamp,@DueDate,null);
+    update Copy set
+   	 DateLastCheckedOut=convert(date, getdate())
+   	 where Barcode=@Barcode;
+    update Copy set
+   	 CheckoutCount = (1 + (
+   		 select CheckoutCount
+   		 from Copy
+   		 where Barcode=@Barcode))
+   	 where Barcode=@Barcode;
+end
+
+declare @PatronID1 varchar(9);
+declare @Barcode1 varchar(12);
+set @PatronID1='901234551';
+set @Barcode1='471424403122';
+exec CheckOutItem @PatronID1, @Barcode1;
+select * from CheckoutTransaction where PatronID='901234551';
+select * from Copy where Barcode='471424403122';
+
+select * from CheckoutTransaction order by CheckoutTimestamp;
+declare @PatronID2 varchar(9);
+declare @Barcode2 varchar(12);
+set @PatronID2='901234562';
+set @Barcode2='923941555344';
+exec CheckOutItem @PatronID2, @Barcode2;
+
+declare @PatronID3 varchar(9);
+declare @Barcode3 varchar(12);
+set @Barcode3='237131477359';
+set @PatronID3='901234565';
+exec CheckOutItem @PatronID3, @Barcode3;
+
+declare @PatronID4 varchar(9);
+declare @Barcode4 varchar(12);
+set @PatronID4='901234567';
+set @Barcode4='318656056758';
+exec CheckOutItem @PatronID4, @Barcode4;
+
+declare @PatronID5 varchar(9);
+declare @Barcode5 varchar(12);
+set @PatronID5='901224568';
+set @Barcode5='638518606133';
+exec CheckOutItem @PatronID5, @Barcode5;
+
+-- RenewItem
+-- procedure called when patron attempts to renew
+create procedure RenewItem
+    @PatronID varchar(9),
+    @Barcode varchar(12)
+as
+begin
+    declare @Count int;
+    set @Count = (select RenewalCount from CheckoutTransaction
+    where Barcode=@Barcode and PatronID=@PatronID);
+    if exists (select * from Holds where Barcode=@Barcode)
+      print 'Renewal denied. Item is on hold.';
+    else if @Count=2
+     print 'Renewal denied. Maximum renewals reached.';
+    else
+    begin
+   	 declare @RenewalTimestamp datetime;
+   	 set @RenewalTimestamp = sysdatetime();
+   	 declare @Rule1 int;
+   	 set @Rule1 = (select t.BorrowingRule
+   		 from dbo.PatronType t,dbo.Patron p
+   		 where t.PatronTypeID = p.PatronTypeID
+   		 and p.PatronID = @PatronID);
+   	 declare @Rule2 int;
+   	 set @Rule2 = (select b.PolicyRule
+   		 from dbo.BorrowingPolicies b,dbo.Copy c
+   		 where b.PolicyID=c.PolicyID
+   		 and c.Barcode = @Barcode);
+   	 declare @DueDate datetime;
+    set @DueDate =
+     case @Rule2
+   	 when 0.125
+   		 then DateAdd(hour,3,@RenewalTimestamp)
+   	 when 21
+   		 then DateAdd(day,21,@RenewalTimestamp)
+   	 when 5
+   		 then DateAdd(day,5,@RenewalTimestamp)
+   	 else
+   		 DateAdd(day,1,@RenewalTimestamp)
+   	 end;
+   	 update CheckoutTransaction
+   		 set DueDate= @DueDate
+   		 where PatronID=@PatronID and Barcode=@Barcode;
+   	 update CheckoutTransaction
+   		 set RenewalCount = @Count+1
+   		 where PatronID=@PatronID and Barcode=@Barcode;
+   	 delete from Fines
+   		 where PatronID=@PatronID
+   		 and Barcode=@Barcode
+   		 and DueDate is null;
+    end
+end
+
+declare @PatronID6 varchar(9);
+declare @Barcode6 varchar(12);
+set @PatronID6='901234551';
+set @Barcode6='471424403122';
+exec RenewItem @PatronID6, @Barcode6;
+
+-- CheckInItem
+-- procedure called during checkin
+create procedure CheckInItem
+    @PatronID varchar(9),
+    @Barcode varchar(12)
+as
+begin
+    declare @DateReturned datetime;
+    set @DateReturned = getdate();
+    update Fines set DateReturned=@DateReturned
+   	 where @PatronID = PatronID
+   	 and @Barcode = Barcode
+   	 and DueDate =
+   		 (select DueDate from CheckoutTransaction
+   			 where PatronID=@PatronID and Barcode=@Barcode);
+    update Holds set Status='READY FOR PICKUP'
+   	 where Barcode=@Barcode
+   	 and HoldPlacedDate=
+   		 (select min(HoldPlacedDate)
+   		 from Holds where Barcode=@Barcode);
+    delete from CheckoutTransaction
+   	 where PatronID=@PatronID
+   	 and Barcode=@Barcode;
+end
+
+declare @PatronID varchar(9);
+declare @Barcode varchar(12);
+set @PatronID='901234567';
+set @Barcode='318656056758';
+exec CheckInItem @PatronID, @Barcode;
+
+-- UpdateFines
+-- this would be run nightly
+-- charges $1/day
+-- could be expanded to allow for different fine amounts based on material type, collection
+create procedure UpdateFines
+as
+begin
+    insert into Fines (PatronID,Barcode,DueDate)
+   	 (select PatronID, Barcode, DueDate
+   	 from CheckoutTransaction
+   	 where DueDate < getdate());
+    update Fines
+   	 set AmountDue = datediff(day,DueDate,getdate())
+   	 where DateReturned is null;
+end
+
+exec UpdateFines;
+
+-- ExpiredHolds
+-- this would be run nightly
+create procedure ExpiredHolds
+as
+begin
+    delete from Holds
+   	 where HoldUntilDate < getdate()
+   	 and Status='ON HOLD';
+end
+
+exec ExpiredHolds;
+
+
 -------------------
 -- CREATE VIEWS
 -------------------
--- Some of these could also be good BI reports
---To report on books that are overdue
+-- PatronFines
+create view PatronFines as
+select
+p.PatronId,PatronFirstName,PatronLastName,PatronEmail,c.CallNo,t.TitleName,f.Barcode,f.DueDate,f.AmountDue
+from Patron p,Fines f,Copy c,Title t
+where p.PatronID=f.PatronID
+and f.Barcode=c.Barcode
+and t.TitleID =(select TitleID from edition e where e.CallNo=c.CallNo);
+select * from PatronFines;
+
+
+
+-- Shawn:
+--To report on acquisition order statuses
+--To report on outstanding acquisition orders
+--To report on patrons with holds or overdue books
+
+-- Save for BI reports
 --To report on books that have not been checked out in a specified amount of time
 --To report on books that are highly used
 --To report on books that are damaged and need to be replaced
---To report on acquisition order statuses
 --To report on the content of collections
---To report on the contents of course reserve lists
---To report on outstanding holds
---To report on patrons with holds or overdue books
---To report on outstanding acquisition orders
---To report on outstanding fines
 --To report on active or historical course reserve lists
 --To report on collections of special interest
---To report on currently available titles
+
