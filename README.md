@@ -11,4 +11,4 @@ Content Notes:
 * MissionStatement&Objectives.docx - this is the initial list of objectives for the database
 * FinalDesignDocument.pdf - this outlines the business problems and rules the database addresses and our design decisions. Minor changes were made in design decisions during the course of implementation.
 * FinalERD.vsd - Visio file of entity relationship diagram. Minor changes were made during implementation.
-
+* PowerBIDashboard.pdf - pdf of collection management dashboard created in Power BI. PNG also included.
